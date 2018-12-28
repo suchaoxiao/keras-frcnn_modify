@@ -16,7 +16,7 @@ def augment(img_data, config, augment=True):
 	if augment:
 		rows, cols = img.shape[:2]
 
-		if config.use_horizontal_flips and np.random.randint(0, 2) == 0:
+		if config.use_horizontal_flips and np.random.randint(0, 2) == 0: #randomint（0，2）从0，1中随机选一个数
 			img = cv2.flip(img, 1)
 			for bbox in img_data_aug['bboxes']:
 				x1 = bbox['x1']

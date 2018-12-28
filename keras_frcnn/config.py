@@ -39,11 +39,11 @@ class Config:
 		self.std_scaling = 4.0
 		self.classifier_regr_std = [8.0, 8.0, 4.0, 4.0]
 
-		# overlaps for RPN
+		# overlaps for RPN  rpn有效的最大和最小阈值
 		self.rpn_min_overlap = 0.3
 		self.rpn_max_overlap = 0.7
 
-		# overlaps for classifier ROIs
+		# overlaps for classifier ROIs  判断回归框属于什么类别的阈值
 		self.classifier_min_overlap = 0.1
 		self.classifier_max_overlap = 0.5
 

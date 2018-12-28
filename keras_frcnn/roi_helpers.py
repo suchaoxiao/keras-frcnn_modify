@@ -3,10 +3,11 @@ import pdb
 import math
 from . import data_generators
 import copy
-
+#这章是关于--roi_helpers.py的rpn_to_roi函数
+# 该函数的作用是将rpn网络的预测结果转化到一个个预选框
 
 def calc_iou(R, img_data, C, class_mapping):
-
+#该函数的作用是生成classifier网络训练的数据,需要注意的是它对提供的预选框还会做一次选择就是将容易判断的背景删除
 	bboxes = img_data['bboxes']
 	(width, height) = (img_data['width'], img_data['height'])
 	# get image dimensions for resizing
@@ -122,23 +123,26 @@ def apply_regr(x, y, w, h, tx, ty, tw, th):
 
 def apply_regr_np(X, T):
 	try:
+		#读取anchor坐标
 		x = X[0, :, :]
 		y = X[1, :, :]
 		w = X[2, :, :]
 		h = X[3, :, :]
-
+		#读取修正坐标
 		tx = T[0, :, :]
 		ty = T[1, :, :]
 		tw = T[2, :, :]
 		th = T[3, :, :]
-
+		#计算anchor中心
 		cx = x + w/2.
 		cy = y + h/2.
+		#对中心修正
 		cx1 = tx * w + cx
 		cy1 = ty * h + cy
 
-		w1 = np.exp(tw.astype(np.float64)) * w
+		w1 = np.exp(tw.astype(np.float64)) * w  #计算修正后宽度
 		h1 = np.exp(th.astype(np.float64)) * h
+		# 修正后的左上点坐标
 		x1 = cx1 - w1/2.
 		y1 = cy1 - h1/2.
 
@@ -146,12 +150,21 @@ def apply_regr_np(X, T):
 		y1 = np.round(y1)
 		w1 = np.round(w1)
 		h1 = np.round(h1)
-		return np.stack([x1, y1, w1, h1])
+		return np.stack([x1, y1, w1, h1])  #返回修正好的anchor
 	except Exception as e:
 		print(e)
 		return X
 
+#该函数的作用是从所给定的所有预选框中选择指定个数最合理的边框
 def non_max_suppression_fast(boxes, probs, overlap_thresh=0.9, max_boxes=300):
+	'''
+框
+每个框对应的概率大小（是否有物体）
+重合度阈值
+选取框的个数
+框（x1,y1,x2,y2）的形式
+对应的概率
+	'''
 	# code used from here: http://www.pyimagesearch.com/2015/02/16/faster-non-maximum-suppression-python/
 	# if there are no boxes, return an empty list
 	if len(boxes) == 0:
@@ -163,6 +176,7 @@ def non_max_suppression_fast(boxes, probs, overlap_thresh=0.9, max_boxes=300):
 	x2 = boxes[:, 2]
 	y2 = boxes[:, 3]
 
+#左上角的坐标小于右下角
 	np.testing.assert_array_less(x1, x2)
 	np.testing.assert_array_less(y1, y2)
 
@@ -182,6 +196,10 @@ def non_max_suppression_fast(boxes, probs, overlap_thresh=0.9, max_boxes=300):
 
 	# keep looping while some indexes still remain in the indexes
 	# list
+	'''
+	每一次取概率最大的框（即idxs最后一个）
+删除掉剩下的框中重和度高于overlap_thresh的框
+直到取满max_boxes为止'''
 	while len(idxs) > 0:
 		# grab the last index in the indexes list and add the
 		# index value to the list of picked indexes
@@ -198,7 +216,7 @@ def non_max_suppression_fast(boxes, probs, overlap_thresh=0.9, max_boxes=300):
 
 		ww_int = np.maximum(0, xx2_int - xx1_int)
 		hh_int = np.maximum(0, yy2_int - yy1_int)
-
+#计算取出来的框与剩下来的框区域的交集
 		area_int = ww_int * hh_int
 
 		# find the union
@@ -220,12 +238,22 @@ def non_max_suppression_fast(boxes, probs, overlap_thresh=0.9, max_boxes=300):
 	return boxes, probs
 
 import time
+'''
+框对应的概率（是否存在物体）
+每个框对应的回归梯度
+C信息对象
+维度组织形式
+是否进行边框回归（一般为True）
+要取出多少个框
+重叠度的阈值
+返回指定个数的预选框，形式是（x1,y1,x2,y2）
+'''
 def rpn_to_roi(rpn_layer, regr_layer, C, dim_ordering, use_regr=True, max_boxes=300,overlap_thresh=0.9):
 
 	regr_layer = regr_layer / C.std_scaling
 
-	anchor_sizes = C.anchor_box_scales
-	anchor_ratios = C.anchor_box_ratios
+	anchor_sizes = C.anchor_box_scales   #[128,256,512]
+	anchor_ratios = C.anchor_box_ratios  #[1:1,1:2,2:1]
 
 	assert rpn_layer.shape[0] == 1
 
@@ -237,43 +265,46 @@ def rpn_to_roi(rpn_layer, regr_layer, C, dim_ordering, use_regr=True, max_boxes=
 
 	curr_layer = 0
 	if dim_ordering == 'tf':
-		A = np.zeros((4, rpn_layer.shape[1], rpn_layer.shape[2], rpn_layer.shape[3]))
+		A = np.zeros((4, rpn_layer.shape[1], rpn_layer.shape[2], rpn_layer.shape[3]))  #[4,rows,cols,channel]
 	elif dim_ordering == 'th':
 		A = np.zeros((4, rpn_layer.shape[2], rpn_layer.shape[3], rpn_layer.shape[1]))
 
 	for anchor_size in anchor_sizes:
 		for anchor_ratio in anchor_ratios:
-
+# 得到框的长宽在原图到featuemap的映射
 			anchor_x = (anchor_size * anchor_ratio[0])/C.rpn_stride
 			anchor_y = (anchor_size * anchor_ratio[1])/C.rpn_stride
 			if dim_ordering == 'th':
 				regr = regr_layer[0, 4 * curr_layer:4 * curr_layer + 4, :, :]
 			else:
+				#regr_layer[0, :, :, 4 * curr_layer:4 * curr_layer + 4]当某一个维度的取值为一个值时，那么新的变量就会减小一个维度
 				regr = regr_layer[0, :, :, 4 * curr_layer:4 * curr_layer + 4]
-				regr = np.transpose(regr, (2, 0, 1))
+				regr = np.transpose(regr, (2, 0, 1)) #得到相应尺寸的框对应的回归梯度，将深度都放到第一个维度
 
-			X, Y = np.meshgrid(np.arange(cols),np. arange(rows))
-
+			X, Y = np.meshgrid(np.arange(cols),np. arange(rows))  #  生成row行，col列的xy两个矩阵
+##这一步是为了得到每一个anchor对应是坐标 得到anchor对应的（x,y,w,h）（中心点，宽，高）
 			A[0, :, :, curr_layer] = X - anchor_x/2
 			A[1, :, :, curr_layer] = Y - anchor_y/2
 			A[2, :, :, curr_layer] = anchor_x
 			A[3, :, :, curr_layer] = anchor_y
-
+#使用regr对anchor所确定的框进行修正
 			if use_regr:
 				A[:, :, :, curr_layer] = apply_regr_np(A[:, :, :, curr_layer], regr)
-
+	#A[左上角坐标x，y，宽  高]
+			#宽高最小为1
 			A[2, :, :, curr_layer] = np.maximum(1, A[2, :, :, curr_layer])
 			A[3, :, :, curr_layer] = np.maximum(1, A[3, :, :, curr_layer])
+			#右下角坐标
 			A[2, :, :, curr_layer] += A[0, :, :, curr_layer]
 			A[3, :, :, curr_layer] += A[1, :, :, curr_layer]
-
+			#左上角最小wei0，右下角最大为宽
 			A[0, :, :, curr_layer] = np.maximum(0, A[0, :, :, curr_layer])
 			A[1, :, :, curr_layer] = np.maximum(0, A[1, :, :, curr_layer])
 			A[2, :, :, curr_layer] = np.minimum(cols-1, A[2, :, :, curr_layer])
 			A[3, :, :, curr_layer] = np.minimum(rows-1, A[3, :, :, curr_layer])
 
 			curr_layer += 1
-
+#得到all_boxes形状是（n,4），和每一个框对应的概率all_probs形状是（n,）
 	all_boxes = np.reshape(A.transpose((0, 3, 1,2)), (4, -1)).transpose((1, 0))
 	all_probs = rpn_layer.transpose((0, 3, 1, 2)).reshape((-1))
 
@@ -281,12 +312,13 @@ def rpn_to_roi(rpn_layer, regr_layer, C, dim_ordering, use_regr=True, max_boxes=
 	y1 = all_boxes[:, 1]
 	x2 = all_boxes[:, 2]
 	y2 = all_boxes[:, 3]
-
+#删除掉一些不合理的点，即右下角的点值要小于左上角的点值
 	idxs = np.where((x1 - x2 >= 0) | (y1 - y2 >= 0))
 
 	all_boxes = np.delete(all_boxes, idxs, 0)
 	all_probs = np.delete(all_probs, idxs, 0)
-
+#最后是根据要求选取指定个数的合理预选框。这一步是重要的，
+# 因为每一个点可以有9个预选框，而又拥有很多点，一张图片可能会有几万个预选框。而经过这一步预选迅速下降到几百个
 	result = non_max_suppression_fast(all_boxes, all_probs, overlap_thresh=overlap_thresh, max_boxes=max_boxes)[0]
 
 	return result

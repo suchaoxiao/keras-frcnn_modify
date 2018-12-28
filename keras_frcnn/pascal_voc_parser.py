@@ -2,7 +2,7 @@ import os
 import cv2
 import xml.etree.ElementTree as ET
 import numpy as np
-def get_data(input_path):
+def get_data(input_path):  #定义获取图片的函数
 	all_imgs = []
 
 	classes_count = {}
@@ -11,8 +11,9 @@ def get_data(input_path):
 
 	visualise = False
 
-	data_paths = [os.path.join(input_path,s) for s in ['VOC2007', 'VOC2012']]
-	
+	# data_paths = [os.path.join(input_path,s) for s in ['VOC2007', 'VOC2012']]
+	data_paths = [os.path.join(input_path,s) for s in ['VOC2012']]
+
 
 	print('Parsing annotation files')
 
@@ -25,6 +26,7 @@ def get_data(input_path):
 
 		trainval_files = []
 		test_files = []
+	#按行取读文件对象类文字， line.strip（）用来去除空格 然后保存到trinvalfile
 		try:
 			with open(imgsets_path_trainval) as f:
 				for line in f:
@@ -100,3 +102,7 @@ def get_data(input_path):
 				print(e)
 				continue
 	return all_imgs, classes_count, class_mapping
+
+#测试用例 其中visualise = True
+from keras_frcnn.pascal_voc_parser import get_data
+all_imgs, classes_count, class_mapping = get_data('D:\datasets\VOCdevkit')

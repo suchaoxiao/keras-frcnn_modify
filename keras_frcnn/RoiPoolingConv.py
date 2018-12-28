@@ -29,8 +29,8 @@ class RoiPoolingConv(Layer):
         self.dim_ordering = K.image_dim_ordering()
         assert self.dim_ordering in {'tf', 'th'}, 'dim_ordering must be in {tf, th}'
 
-        self.pool_size = pool_size
-        self.num_rois = num_rois
+        self.pool_size = pool_size    #规整后特征图大小
+        self.num_rois = num_rois   #预选框个数
 
         super(RoiPoolingConv, self).__init__(**kwargs)
 
