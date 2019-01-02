@@ -3,8 +3,12 @@ import pdb
 import math
 from . import data_generators
 import copy
+#整个流程4个模块，vgg，rpn roipooling classifiler 在vvg网络模型中定义，
+#datageneraators主要是rpn网络，从vgg卷积出来的featuremap 中进行anchor产生，bg/fg判断，坐标regression，为proposals坐准备
+#roihelper  该函数的作用是将rpn网络的预测结果转化到一个个预选框 proposals生成过程。
+#vgg=》datagenerator=》riohelpers =》roipooling
 #这章是关于--roi_helpers.py的rpn_to_roi函数
-# 该函数的作用是将rpn网络的预测结果转化到一个个预选框
+# 该函数的作用是将rpn网络的预测结果转化到一个个预选框 proposals生成过程。
 
 def calc_iou(R, img_data, C, class_mapping):
 #该函数的作用是生成classifier网络训练的数据,需要注意的是它对提供的预选框还会做一次选择就是将容易判断的背景删除

@@ -8,15 +8,15 @@ from keras_frcnn import data_augment
 import threading
 import itertools
 
-
+#计算并的面积
 def union(au, bu, area_intersection):
 	area_a = (au[2] - au[0]) * (au[3] - au[1])
 	area_b = (bu[2] - bu[0]) * (bu[3] - bu[1])
 	area_union = area_a + area_b - area_intersection
 	return area_union
 
-
-def intersection(ai, bi): #(x1,y1,x2,y2)对应左下，右上两个角点
+#计算相交面积
+def intersection(ai, bi): #(x1,y1,x2,y2)对应左上，右下两个角点，图片的坐标原点在左上，向右向下都变大
 	x = max(ai[0], bi[0])
 	y = max(ai[1], bi[1])
 	w = min(ai[2], bi[2]) - x
@@ -26,8 +26,8 @@ def intersection(ai, bi): #(x1,y1,x2,y2)对应左下，右上两个角点
 	return w*h
 
 
-def iou(a, b):  #iou范围（0，1）
-	# a and b should be (x1,y1,x2,y2)   （x1,y1）左下  （x2,y2）右上
+def iou(a, b):  #iou范围（0，1） 计算交并比
+	# a and b should be (x1,y1,x2,y2)   （x1,y1）左  （x2,y2）右下
 
 	if a[0] >= a[2] or a[1] >= a[3] or b[0] >= b[2] or b[1] >= b[3]:
 		return 0.0
@@ -86,7 +86,8 @@ class SampleSelector:
 计算特征图大小函数'''
 def calc_rpn(C, img_data, width, height, resized_width, resized_height, img_length_calc_function):
 	#返回anchor是否包含类，和回归梯度
-#c是config信息，  width height 是原图像的不是经过处理的标准输入的尺寸P*Q，resized 是标准输入M*N  img_length_calc用来计算特征图大小的函数
+#c是config信息，  width height 是原图像的不是经过处理的标准输入的尺寸P*Q，resized 是标准输入M*N
+	#  img_length_calc用来计算特征图大小的函数
 
 	downscale = float(C.rpn_stride)   #16
 	anchor_sizes = C.anchor_box_scales  #[128, 256, 512]
@@ -101,19 +102,19 @@ def calc_rpn(C, img_data, width, height, resized_width, resized_height, img_leng
 	
 	# initialise empty output objectives
 	y_rpn_overlap = np.zeros((output_height, output_width, num_anchors))  #[outh,outw,9]
-	y_is_box_valid = np.zeros((output_height, output_width, num_anchors))  #[outh,outw,9]
-	y_rpn_regr = np.zeros((output_height, output_width, num_anchors * 4))  #[outh,outw,9*4]
+	y_is_box_valid = np.zeros((output_height, output_width, num_anchors))  #[outh,outw,9] 有效框
+	y_rpn_regr = np.zeros((output_height, output_width, num_anchors * 4))  #[outh,outw,9*4]  回归坐标
 
 	num_bboxes = len(img_data['bboxes'])  #统计一张图上 bbox的个数，可以是多个
-
-	num_anchors_for_bbox = np.zeros(num_bboxes).astype(int)  #[ numbbox个0    ]
-	best_anchor_for_bbox = -1*np.ones((num_bboxes, 4)).astype(int)  #[numbbox,4 ]填充-1
-	best_iou_for_bbox = np.zeros(num_bboxes).astype(np.float32)  #[ numbbox个0    ]
-	best_x_for_bbox = np.zeros((num_bboxes, 4)).astype(int)   #[numbbox,4 ]填充0
-	best_dx_for_bbox = np.zeros((num_bboxes, 4)).astype(np.float32)  #[numbbox,4 ]填充0
+    #每个bbox对应9个anchor，但是只存储一个bbox对应最好的那个anchor的数据
+	num_anchors_for_bbox = np.zeros(num_bboxes).astype(int)  #[ numbbox个0 ]  bbox对应的anchor数量
+	best_anchor_for_bbox = -1*np.ones((num_bboxes, 4)).astype(int)  #[numbbox,4 ]填充-1  bbox最好的anchor
+	best_iou_for_bbox = np.zeros(num_bboxes).astype(np.float32)  #[ numbbox个0    ] bbox对应的最好iou值
+	best_x_for_bbox = np.zeros((num_bboxes, 4)).astype(int)   #[numbbox,4 ]填充0   对应某个bbox的最好的anchor坐标
+	best_dx_for_bbox = np.zeros((num_bboxes, 4)).astype(np.float32)  #[numbbox,4 ]填充0 最好的 修正anchor参数
 
 	# get the GT box coordinates, and resize to account for image resizing
-	gta = np.zeros((num_bboxes, 4))   #[numbbox,4 ]填充0
+	gta = np.zeros((num_bboxes, 4))   #[numbbox,4 ]填充0  初始化用于获取bbox 的gt的坐标变量
 	for bbox_num, bbox in enumerate(img_data['bboxes']):   #一个放编号，一个放bbox值
 		# get the GT box coordinates, and resize to account for image resizing
         #存4个坐标到gta中  缩放匹配到resize以后的图像bbox的大小
@@ -121,7 +122,6 @@ def calc_rpn(C, img_data, width, height, resized_width, resized_height, img_leng
 		gta[bbox_num, 1] = bbox['x2'] * (resized_width / float(width))
 		gta[bbox_num, 2] = bbox['y1'] * (resized_height / float(height))
 		gta[bbox_num, 3] = bbox['y2'] * (resized_height / float(height))
-	
 	# rpn ground truth
 
 	for anchor_size_idx in range(len(anchor_sizes)):  #遍历每个anchor的尺寸【128，256，512】
@@ -133,7 +133,6 @@ def calc_rpn(C, img_data, width, height, resized_width, resized_height, img_leng
 				# x-coordinates of the current anchor box	
 				x1_anc = downscale * (ix + 0.5) - anchor_x / 2  #x的左下点   对应原图，因为成了缩放因子16
 				x2_anc = downscale * (ix + 0.5) + anchor_x / 2	#x的右上点 同上
-				
 				# ignore boxes that go across image boundaries					
 				if x1_anc < 0 or x2_anc > resized_width:  #resizedwidth 指的是原图M和N，不是网络处理后的图
 					continue
@@ -151,13 +150,13 @@ def calc_rpn(C, img_data, width, height, resized_width, resized_height, img_leng
                 # downscale：将特征图坐标映射到原图的比例
                 # if语句是将超出图片的框删去'''
 					# bbox_type indicates whether an anchor should be a target 
-					bbox_type = 'neg'
+					bbox_type = 'neg'   #用来指示anchor是否包含目标
 
 					# this is the best IOU for the (x,y) coord and the current anchor
 					# note that this is different from the best IOU for a GT bbox
-					best_iou_for_loc = 0.0
+					best_iou_for_loc = 0.0  #用来指示对当前坐标和anchor最佳的iou值
 
-					for bbox_num in range(num_bboxes):
+					for bbox_num in range(num_bboxes):  #遍历图片中，所有的bbox框（这个是做数据是标定的）
 						
 						# get IOU of the current GT box and the current anchor box 计算gta与当前anchor的交集
 						curr_iou = iou([gta[bbox_num, 0], gta[bbox_num, 2], gta[bbox_num, 1], gta[bbox_num, 3]], [x1_anc, y1_anc, x2_anc, y2_anc])
@@ -198,7 +197,9 @@ def calc_rpn(C, img_data, width, height, resized_width, resized_height, img_leng
 								# gray zone between neg and pos
 								if bbox_type != 'pos': #如果bbox不是正例 设成中立
 									bbox_type = 'neutral'
-
+                    #依然对feature map每个坐标点操作，如果bbox类型是neg 那么这一点是是有效的预选框但是不包含物体
+                    #如果bbox是中性的，它既不包含物体，也不是有效框
+                    #如果bbox是pos，他是有效的，也包含物体
 					# turn on or off outputs depending on IOUs
 					if bbox_type == 'neg':
 						y_is_box_valid[jy, ix, anchor_ratio_idx + n_anchratios * anchor_size_idx] = 1  #预选框是否有效
@@ -214,10 +215,10 @@ def calc_rpn(C, img_data, width, height, resized_width, resized_height, img_leng
 
 	# we ensure that every bbox has at least one positive RPN region
 	#有一个bbox没有pos的预选宽和其对应，这找一个与它交并比最高的anchor的设置为pos
-	for idx in range(num_anchors_for_bbox.shape[0]):
-		if num_anchors_for_bbox[idx] == 0:
+	for idx in range(num_anchors_for_bbox.shape[0]):  #遍历每一个图片中bbox数量
+		if num_anchors_for_bbox[idx] == 0:   #如果对应bbox对应的anchor数为0
 			# no box with an IOU greater than zero ...
-			if best_anchor_for_bbox[idx, 0] == -1:
+			if best_anchor_for_bbox[idx, 0] == -1: #
 				continue
 			y_is_box_valid[
 				best_anchor_for_bbox[idx,0], best_anchor_for_bbox[idx,1], best_anchor_for_bbox[idx,2] + n_anchratios *
@@ -286,7 +287,7 @@ def threadsafe_generator(f):
 	def g(*a, **kw):
 		return threadsafe_iter(f(*a, **kw))
 	return g
-
+#定义获取gt数据信息
 def get_anchor_gt(all_img_data, class_count, C, img_length_calc_function, backend, mode='train'):
 
 	# The following line is not useful with Python 3.5, it is kept for the legacy
@@ -318,13 +319,13 @@ def get_anchor_gt(all_img_data, class_count, C, img_length_calc_function, backen
 				assert rows == height
 
 				# get image dimensions for resizing
-				(resized_width, resized_height) = get_new_img_size(width, height, C.im_size)
+				(resized_width, resized_height) = get_new_img_size(width, height, C.im_size)   #调整图片大小
 
 				# resize the image so that smalles side is length = 600px
 				x_img = cv2.resize(x_img, (resized_width, resized_height), interpolation=cv2.INTER_CUBIC)
 
 				try:
-					y_rpn_cls, y_rpn_regr = calc_rpn(C, img_data_aug, width, height, resized_width, resized_height, img_length_calc_function)
+					y_rpn_cls, y_rpn_regr = calc_rpn(C, img_data_aug, width, height, resized_width, resized_height, img_length_calc_function)  #计算rpn网络输出
 				except:
 					continue
 
